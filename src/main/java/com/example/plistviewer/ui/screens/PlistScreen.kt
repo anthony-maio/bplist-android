@@ -32,19 +32,34 @@ import androidx.compose.foundation.background // For background modifier
 
 
 // Material 3 components:
+import androidx.compose.material3.AlertDialog // For error dialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-// import androidx.compose.material3.Icon 
+import androidx.compose.material3.Icon 
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton // For AlertDialog button
 import androidx.compose.material3.TopAppBar
 // import androidx.compose.material3.TopAppBarDefaults 
 
-// Icons (placeholders used, but real imports would be here)
-// import androidx.compose.material.icons.Icons
-// import androidx.compose.material.icons.filled.Close
-// import androidx.compose.material.icons.filled.Search
+// Icons
+import androidx.compose.material.icons.Icons // Standard icons
+import androidx.compose.material.icons.filled.Close // For clearing search (TopAppBar)
+import androidx.compose.material.icons.filled.Search // Search Icon (TopAppBar)
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowRight
+import androidx.compose.material.icons.filled.Article // For String
+import androidx.compose.material.icons.filled.CalendarToday // For Date
+import androidx.compose.material.icons.filled.CheckBox // For Boolean
+import androidx.compose.material.icons.filled.DataObject // For Dictionary
+import androidx.compose.material.icons.filled.Description // For general data/string fallback
+import androidx.compose.material.icons.filled.Image // For Image Data
+import androidx.compose.material.icons.filled.List // For Array
+import androidx.compose.material.icons.filled.Numbers // For Integer/Real
+import androidx.compose.material.icons.filled.Archive // For Archive
+import androidx.compose.material.icons.filled.Memory // For raw data / protobuf
+
 
 // Platform specific
 import androidx.compose.ui.platform.LocalFocusManager
@@ -139,8 +154,22 @@ fun PlistScreen(viewModel: PlistViewModel) {
     val keyboardController = LocalSoftwareKeyboardController.current 
     val focusManager = LocalFocusManager.current 
 
-    // val SearchIcon = object { val name = "Search" } // Placeholder not used as direct Text is used
-    // val CloseIcon = object { val name = "Close" } // Placeholder not used as direct Text is used
+    val rootNode by viewModel.nodes.observeAsState()
+    val expandedPaths by viewModel.expandedNodePaths.collectAsState()
+    val errorMessage by viewModel.errorState.observeAsState() 
+
+    errorMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearError() }, 
+            title = { Text("Error") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearError() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -165,7 +194,7 @@ fun PlistScreen(viewModel: PlistViewModel) {
                                     searchQuery = ""
                                     viewModel.search("".toRegex()) 
                                 }) {
-                                    Text("X") 
+                                     Icon(Icons.Filled.Close, contentDescription = "Clear Search")
                                 }
                             }
                         )
@@ -176,26 +205,21 @@ fun PlistScreen(viewModel: PlistViewModel) {
                 actions = {
                     if (!showSearchView) {
                         IconButton(onClick = { showSearchView = true }) {
-                             Text("S") 
+                             Icon(Icons.Filled.Search, contentDescription = "Search Plist")
                         }
                     }
                 }
             )
         }
     ) { innerPadding ->
-        val rootNode by viewModel.nodes.observeAsState() 
-        val expandedPaths by viewModel.expandedNodePaths.collectAsState() // Collect StateFlow
-
-        if (rootNode == null) {
+        if (rootNode == null && errorMessage == null) { 
             Box(modifier = Modifier.padding(innerPadding).fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("No PList loaded or data is empty.")
             }
-        } else {
+        } else if (rootNode != null) { 
             val visibleNodes = remember(rootNode, expandedPaths) {
-                // Recompute the flat list when rootNode or expandedPaths change
                 mutableListOf<DisplayableNode>().apply {
-                    // Assuming rootNode itself might not have a path from a parent, generate its initial path
-                    val initialPath = generateRootPath(rootNode!!) // rootNode is non-null here
+                    val initialPath = generateRootPath(rootNode!!)
                     buildVisibleNodesList(rootNode!!, initialPath, 0, expandedPaths, this)
                 }
             }
@@ -205,7 +229,7 @@ fun PlistScreen(viewModel: PlistViewModel) {
                     PlistNodeItem(
                         node = displayableNode.node,
                         depth = displayableNode.depth,
-                        viewModel = viewModel, // For search query access later
+                        viewModel = viewModel,
                         path = displayableNode.path,
                         isExpanded = expandedPaths.contains(displayableNode.path),
                         onToggleNode = { path -> viewModel.toggleNodeExpansion(path) }
@@ -220,31 +244,25 @@ fun PlistScreen(viewModel: PlistViewModel) {
 fun PlistNodeItem(
     node: PlistNode,
     depth: Int,
-    viewModel: PlistViewModel, // ViewModel is now used for query
+    viewModel: PlistViewModel, 
     path: List<Any>,
     isExpanded: Boolean,
     onToggleNode: (List<Any>) -> Unit
 ) {
-    val queryRegex by viewModel.query.collectAsState() // Collect search query as state
-
-    // Determine if the node matches the search query
-    val isMatch = remember(node, queryRegex) { // Re-calculate when node or query changes
+    val queryRegex by viewModel.query.collectAsState() 
+    val isMatch = remember(node, queryRegex) { 
         queryRegex?.let { regex ->
             val keyMatch = node.key?.let { regex.containsMatchIn(it) } ?: false
-            // displayValue can be computationally intensive if called for every node, every time.
-            // However, for highlighting, it's needed.
-            // Consider optimizing if performance issues arise (e.g., pre-calculating displayValue for search).
             val valueMatch = regex.containsMatchIn(displayValue(node))
             keyMatch || valueMatch
-        } ?: false // No query means no match
+        } ?: false 
     }
-
     val backgroundColor = if (isMatch) Color.Yellow.copy(alpha = 0.3f) else Color.Transparent
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(backgroundColor) // Apply background color for highlighting
+            .background(backgroundColor) 
             .padding(start = (depth * 16).dp)
     ) {
         Row(
@@ -257,29 +275,45 @@ fun PlistNodeItem(
                 )
                 .padding(vertical = 4.dp)
         ) {
-            // ... (Toggle icon, NodeType icon, Key-Value Text as before)
+            // Expand/Collapse Icon
             if (node.children.isNotEmpty()) {
-                Text(text = if (isExpanded) "v " else "> ", modifier = Modifier.width(16.dp))
+                Icon(
+                    imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.ArrowRight,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    modifier = Modifier.width(24.dp) // Standard icon size
+                )
             } else {
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(24.dp)) // Keep alignment for non-expandable items
             }
-            Text(
-                text = when(node.type) { /* ... NodeType icons ... */ 
-                    NodeType.DICTIONARY -> "{}"
-                    NodeType.ARRAY -> "[]"
-                    NodeType.STRING -> "S"
-                    NodeType.INTEGER -> "I"
-                    NodeType.REAL -> "R"
-                    NodeType.BOOLEAN -> "B"
-                    NodeType.DATE -> "D"
-                    NodeType.DATA -> "d"
-                    NodeType.ARCHIVE -> "A"
-                },
-                modifier = Modifier.padding(end = 8.dp)
+
+            // NodeType Icon
+            val typeIcon = when (node.type) {
+                NodeType.DICTIONARY -> Icons.Filled.DataObject
+                NodeType.ARRAY -> Icons.Filled.List
+                NodeType.STRING -> Icons.Filled.Article
+                NodeType.INTEGER, NodeType.REAL -> Icons.Filled.Numbers
+                NodeType.BOOLEAN -> Icons.Filled.CheckBox
+                NodeType.DATE -> Icons.Filled.CalendarToday
+                NodeType.DATA -> {
+                    // Check specific data content for a more specific icon
+                    when (node.value) {
+                        is String -> { // Our placeholder for images
+                            if (node.value.startsWith("[Image:")) Icons.Filled.Image else Icons.Filled.Article
+                        }
+                        is UnknownFieldSet -> Icons.Filled.Memory // Icon for Protobuf
+                        else -> Icons.Filled.Description // Generic binary data / fallback
+                    }
+                }
+                NodeType.ARCHIVE -> Icons.Filled.Archive
+            }
+            Icon(
+                imageVector = typeIcon,
+                contentDescription = node.type.name, // Semantic description for accessibility
+                modifier = Modifier.padding(horizontal = 8.dp) // Spacing around the icon
             )
+            
             val displayKey = node.key ?: (if (depth == 0 && path.firstOrNull() == "_root_") "Root" else path.lastOrNull()?.toString() ?: "")
             Text(text = "$displayKey: ${displayValue(node)}")
         }
-        // No direct recursive calls for children here (handled by LazyColumn)
     }
 }

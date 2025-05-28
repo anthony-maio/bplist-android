@@ -17,17 +17,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.InputStream
-import java.time.ZonedDateTime // For a potential displayValue-like function
+import java.time.ZonedDateTime 
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import com.example.plistviewer.data.model.NodeType // For displayValue-like function
-import com.google.protobuf.UnknownFieldSet // For displayValue-like function
+import com.example.plistviewer.data.model.NodeType 
+import com.google.protobuf.UnknownFieldSet 
 
 
 class PlistViewModel(application: Application) : AndroidViewModel(application) {
     val nodes = MutableLiveData<PlistNode>()
     val query = MutableStateFlow<Regex?>(null)
-    val errorState = MutableLiveData<String?>()
+    val errorState = MutableLiveData<String?>() 
 
     private val _expandedNodePaths = MutableStateFlow<Set<List<Any>>>(emptySet())
     val expandedNodePaths: StateFlow<Set<List<Any>>> = _expandedNodePaths.asStateFlow()
@@ -36,6 +36,14 @@ class PlistViewModel(application: Application) : AndroidViewModel(application) {
         _expandedNodePaths.update { currentPaths ->
             if (currentPaths.contains(path)) currentPaths - path else currentPaths + path
         }
+    }
+
+    /**
+     * Clears the current error state.
+     * This is typically called by the UI after an error has been displayed.
+     */
+    fun clearError() {
+        errorState.value = null // Called from UI, so .value is fine.
     }
 
     // --- Path Generation Helpers (internal to ViewModel for this step) ---
@@ -47,11 +55,7 @@ class PlistViewModel(application: Application) : AndroidViewModel(application) {
     private fun generateRootPathInternal(node: PlistNode): List<Any> {
         return listOf(node.key ?: "_root_")
     }
-    // --- End Path Generation Helpers ---
-
-    // --- displayValue simplified version for ViewModel matching (internal) ---
-    // NOTE: This is a simplified version. Ideally, the exact displayValue logic from UI
-    // or a shared utility should be used if matching against formatted values.
+    
     private fun getSearchableStringForNode(node: PlistNode): String {
         return when (node.type) {
             NodeType.STRING,
@@ -67,60 +71,66 @@ class PlistViewModel(application: Application) : AndroidViewModel(application) {
                     else -> node.value?.toString() ?: ""
                 }
             }
-            else -> "" // Dictionary, Array, Archive values themselves are not directly searched by this string
+            else -> "" 
         }
     }
-    // --- End displayValue simplified version ---
 
 
     fun loadPlist(uri: Uri) {
         viewModelScope.launch {
             try {
+                // SIMULATION for InputStream (as before)
                 val dummyData = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>Test</key><string>Value</string></dict></plist>"
                 val inputStream: InputStream = dummyData.byteInputStream()
+
                 inputStream.use { stream ->
                     val parser: PlistParser = BinaryParser()
-                    val parsedNode = withContext(Dispatchers.IO) { parser.parse(stream) }
-                    nodes.postValue(parsedNode)
-                    errorState.postValue(null)
-                    _expandedNodePaths.value = emptySet()
+                    val parsedNode = withContext(Dispatchers.IO) { 
+                        parser.parse(stream) 
+                    }
+                    nodes.postValue(parsedNode) // Use postValue for LiveData from background thread
+                    errorState.postValue(null)  // Use postValue for LiveData from background thread
+                    _expandedNodePaths.value = emptySet() // StateFlow .value is thread-safe
                 }
             } catch (e: Exception) {
-                errorState.postValue("Error parsing plist: ${e.localizedMessage ?: e.javaClass.simpleName}")
+                errorState.postValue("Error parsing plist: ${e.localizedMessage ?: e.javaClass.simpleName}") // Use postValue
             }
         }
     }
 
     fun search(regex: Regex?) {
-        query.value = regex
+        query.value = regex // StateFlow .value is thread-safe
         if (regex == null || regex.pattern.isEmpty()) {
             // Current plan: do nothing with expansions on clear.
-            // If clearing expansions was desired: _expandedNodePaths.value = emptySet()
         } else {
-            nodes.value?.let { rootNode ->
+            nodes.value?.let { rootNode -> // .value is fine for LiveData if only reading on main thread, or if sure it's set before this.
+                                        // For safety, could launch another coroutine or ensure rootNode is accessed appropriately.
+                                        // Given search is likely called from UI (main thread), nodes.value should be fine.
                 val pathsToExpand = mutableSetOf<List<Any>>()
                 findAllMatchingPaths(
                     currentNode = rootNode,
-                    currentPath = generateRootPathInternal(rootNode), // Initial path for the root
+                    currentPath = generateRootPathInternal(rootNode),
                     regex = regex,
                     pathsToExpand = pathsToExpand
                 )
                 if (pathsToExpand.isNotEmpty()) {
-                    _expandedNodePaths.update { it + pathsToExpand }
+                    _expandedNodePaths.update { it + pathsToExpand } // StateFlow .update is thread-safe
                 }
-                // If no matches, current behavior is to not change expansion state.
-                // Alternative: _expandedNodePaths.value = emptySet() // to collapse all on no match
             }
         }
     }
 
+    /**
+     * Recursively finds all paths that lead to nodes matching the regex.
+     * If a node matches, its path and all its ancestor paths are added to pathsToExpand.
+     * If a node's child matches, the node's path (as an ancestor) is also added.
+     */
     private fun findAllMatchingPaths(
         currentNode: PlistNode,
         currentPath: List<Any>, // Full path to currentNode
         regex: Regex,
         pathsToExpand: MutableSet<List<Any>>
-        // ancestorPath parameter removed as it's not strictly needed; parent paths derived from currentPath
-    ): Boolean { // Return true if this node or any of its children matched
+    ): Boolean { // Returns true if this node or any of its children matched
         var selfMatched = false
         if (currentNode.key?.let { regex.containsMatchIn(it) } == true) {
             selfMatched = true
@@ -138,26 +148,14 @@ class PlistViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         if (selfMatched || childMatched) {
-            // If this node matched, or any of its children matched,
-            // then all parent paths leading to this node (including this node's path if selfMatched)
-            // should be expanded.
-            // However, if only a child matched, this current node's path (currentPath) needs to be added
-            // to ensure the path TO the child is open.
-            pathsToExpand.add(currentPath) // Add path of current node if it or its descendants match
+            // If this node itself matched, or one of its children matched,
+            // then this node's path (currentPath) needs to be expanded to show the match or lead to it.
+            pathsToExpand.add(currentPath)
 
-            // Add all ancestor paths of the current node.
-            // This is slightly redundant if called for every node up the chain,
-            // but ensures completeness. A more optimized approach might collect paths
-            // and then add ancestors once at the end.
-            // For currentPath = [root, child1, item0, leafKey]
-            // We need to add: [root], [root, child1], [root, child1, item0]
-            // The loop for (i in 1 until currentPath.size) in the prompt was to add parent paths.
-            // Let's refine this: if selfMatched, add all its ancestors. If childMatched, this node (currentPath)
-            // is an ancestor to that child, so it's added.
-            
-            // Add all parent paths of currentPath, ensuring they are expanded.
-            // currentPath is the path to the current node. If it or its children matched,
-            // then all paths leading to it must be expanded.
+            // Also, all ancestors of this currentPath must be expanded.
+            // Example: if currentPath = [root, child1, item0, leafKey] matches,
+            // we need to ensure [root], [root, child1], and [root, child1, item0] are also expanded.
+            // The root itself has no parents to add.
             for (i in 1 until currentPath.size) { 
                 pathsToExpand.add(currentPath.subList(0, i))
             }
