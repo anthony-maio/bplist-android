@@ -72,8 +72,9 @@ import com.example.plistviewer.data.model.NodeType
 import com.example.plistviewer.ui.viewmodel.PlistViewModel
 import com.google.protobuf.UnknownFieldSet 
 import java.time.ZonedDateTime 
-import java.time.format.DateTimeFormatter 
-import java.time.format.FormatStyle 
+// Removed: java.time.format.DateTimeFormatter (no longer used directly here)
+// Removed: java.time.format.FormatStyle (no longer used directly here)
+import com.example.plistviewer.util.DateUtils // Added import for DateUtils
 import java.util.regex.PatternSyntaxException 
 
 
@@ -94,18 +95,13 @@ fun generateRootPath(node: PlistNode): List<Any> {
 }
 
 
-// displayValue function (as previously implemented)
 fun displayValue(node: PlistNode): String {
     return when (node.type) {
         NodeType.STRING,
         NodeType.INTEGER,
         NodeType.REAL,
         NodeType.BOOLEAN -> node.value?.toString() ?: "null"
-        NodeType.DATE -> {
-            (node.value as? ZonedDateTime)?.format(
-                DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
-            ) ?: node.value?.toString() ?: "Invalid Date"
-        }
+        NodeType.DATE -> DateUtils.formatZonedDateTimeForDisplay(node.value as? ZonedDateTime) // Updated
         NodeType.DATA -> {
             when (node.value) {
                 is String -> { 
@@ -275,41 +271,37 @@ fun PlistNodeItem(
                 )
                 .padding(vertical = 4.dp)
         ) {
-            // Expand/Collapse Icon
             if (node.children.isNotEmpty()) {
                 Icon(
                     imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.ArrowRight,
                     contentDescription = if (isExpanded) "Collapse" else "Expand",
-                    modifier = Modifier.width(24.dp) // Standard icon size
+                    modifier = Modifier.width(24.dp) 
                 )
             } else {
-                Spacer(modifier = Modifier.width(24.dp)) // Keep alignment for non-expandable items
+                Spacer(modifier = Modifier.width(24.dp)) 
             }
-
-            // NodeType Icon
             val typeIcon = when (node.type) {
                 NodeType.DICTIONARY -> Icons.Filled.DataObject
                 NodeType.ARRAY -> Icons.Filled.List
-                NodeType.STRING -> Icons.Filled.Article
+                NodeType.STRING -> Icons.Filled.Article 
                 NodeType.INTEGER, NodeType.REAL -> Icons.Filled.Numbers
                 NodeType.BOOLEAN -> Icons.Filled.CheckBox
                 NodeType.DATE -> Icons.Filled.CalendarToday
                 NodeType.DATA -> {
-                    // Check specific data content for a more specific icon
                     when (node.value) {
-                        is String -> { // Our placeholder for images
+                        is String -> { 
                             if (node.value.startsWith("[Image:")) Icons.Filled.Image else Icons.Filled.Article
                         }
-                        is UnknownFieldSet -> Icons.Filled.Memory // Icon for Protobuf
-                        else -> Icons.Filled.Description // Generic binary data / fallback
+                        is UnknownFieldSet -> Icons.Filled.Memory 
+                        else -> Icons.Filled.Description 
                     }
                 }
                 NodeType.ARCHIVE -> Icons.Filled.Archive
             }
             Icon(
                 imageVector = typeIcon,
-                contentDescription = node.type.name, // Semantic description for accessibility
-                modifier = Modifier.padding(horizontal = 8.dp) // Spacing around the icon
+                contentDescription = node.type.name, 
+                modifier = Modifier.padding(horizontal = 8.dp) 
             )
             
             val displayKey = node.key ?: (if (depth == 0 && path.firstOrNull() == "_root_") "Root" else path.lastOrNull()?.toString() ?: "")

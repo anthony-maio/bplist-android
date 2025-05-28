@@ -7,7 +7,5 @@ object Constants {
     // JPEG_SIG = byteArrayOf(0xFF.toByte(), 0xD8.toByte())
     val JPEG_SIG = byteArrayOf(0xFF.toByte(), 0xD8.toByte())
 
-    // APPLE_EPOCH = milliseconds from 1970-01-01 to 2001-01-01.
-    // Value: 978307200000L
-    const val APPLE_EPOCH = 978307200000L
+    // APPLE_EPOCH was here, now moved to DateUtils.kt
 }
